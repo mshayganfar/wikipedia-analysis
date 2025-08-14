@@ -21,6 +21,9 @@ from typing import List, Dict, Set
 import time
 import json
 import urllib3
+import os
+import hashlib
+from datetime import datetime, timedelta
 
 # Disable urllib3 warnings about SSL
 urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
@@ -48,12 +51,54 @@ STOP_WORDS = {
 }
 
 class WikipediaAnalyzer:
-    def __init__(self):
+    def __init__(self, cache_dir: str = "cache", cache_expiry_days: int = 7):
         self.base_url = "https://en.wikipedia.org/w/api.php"
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'WikipediaAnalyzer/1.0 (Educational Purpose)'
         })
+        self.cache_dir = cache_dir
+        self.cache_expiry_days = cache_expiry_days
+        self._ensure_cache_dir()
+    
+    def _ensure_cache_dir(self):
+        """Create cache directory if it doesn't exist."""
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+    
+    def _get_cache_filename(self, category: str, cache_type: str) -> str:
+        """Generate cache filename for a category."""
+        # Create a hash of the category name for safe filename
+        category_hash = hashlib.md5(category.encode()).hexdigest()[:8]
+        safe_category = re.sub(r'[^a-zA-Z0-9_-]', '_', category)
+        return os.path.join(self.cache_dir, f"{safe_category}_{category_hash}_{cache_type}.json")
+    
+    def _is_cache_valid(self, cache_file: str) -> bool:
+        """Check if cache file exists and is not expired."""
+        if not os.path.exists(cache_file):
+            return False
+        
+        # Check if cache is expired
+        file_time = datetime.fromtimestamp(os.path.getmtime(cache_file))
+        expiry_time = datetime.now() - timedelta(days=self.cache_expiry_days)
+        
+        return file_time > expiry_time
+    
+    def _load_cache(self, cache_file: str) -> dict:
+        """Load data from cache file."""
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return {}
+    
+    def _save_cache(self, cache_file: str, data: dict):
+        """Save data to cache file."""
+        try:
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Warning: Could not save cache: {e}")
 
     def get_category_members(self, category: str) -> List[str]:
         """
@@ -65,6 +110,15 @@ class WikipediaAnalyzer:
         Returns:
             List of page titles in the category
         """
+        # Check cache first
+        cache_file = self._get_cache_filename(category, "members")
+        if self._is_cache_valid(cache_file):
+            cached_data = self._load_cache(cache_file)
+            if cached_data.get('pages'):
+                print(f"Loading pages from cache for category: {category}")
+                print(f"Found {len(cached_data['pages'])} cached pages")
+                return cached_data['pages']
+        
         print(f"Fetching pages from category: {category}")
         
         pages = []
@@ -111,6 +165,17 @@ class WikipediaAnalyzer:
                 break
         
         print(f"Total pages found: {len(pages)}")
+        
+        # Save to cache
+        cache_data = {
+            'category': category,
+            'pages': pages,
+            'fetched_at': datetime.now().isoformat(),
+            'total_pages': len(pages)
+        }
+        self._save_cache(cache_file, cache_data)
+        print(f"Saved {len(pages)} pages to cache")
+        
         return pages
 
     def get_page_content(self, title: str) -> str:
@@ -183,6 +248,16 @@ class WikipediaAnalyzer:
         Returns:
             Dictionary of word frequencies
         """
+        # Check if we have cached analysis results
+        analysis_cache_file = self._get_cache_filename(category, "analysis")
+        if self._is_cache_valid(analysis_cache_file):
+            cached_analysis = self._load_cache(analysis_cache_file)
+            if cached_analysis.get('word_frequencies'):
+                print(f"Loading analysis results from cache for category: {category}")
+                print(f"Found {len(cached_analysis['word_frequencies'])} unique words in cache")
+                print(f"Total word occurrences: {sum(cached_analysis['word_frequencies'].values())}")
+                return cached_analysis['word_frequencies']
+        
         # Get all pages in the category
         page_titles = self.get_category_members(category)
         
@@ -216,8 +291,21 @@ class WikipediaAnalyzer:
         
         # Count word frequencies
         word_freq = Counter(all_words)
+        word_freq_dict = dict(word_freq)
         
-        return dict(word_freq)
+        # Save analysis results to cache
+        analysis_data = {
+            'category': category,
+            'word_frequencies': word_freq_dict,
+            'analyzed_at': datetime.now().isoformat(),
+            'total_pages_processed': processed_pages,
+            'total_unique_words': len(word_freq_dict),
+            'total_word_occurrences': sum(word_freq_dict.values())
+        }
+        self._save_cache(analysis_cache_file, analysis_data)
+        print(f"Saved analysis results to cache")
+        
+        return word_freq_dict
 
     def print_results(self, word_freq: Dict[str, int], top_n: int = 50):
         """
@@ -276,10 +364,38 @@ Examples:
         help='Save results to JSON file'
     )
     
+    parser.add_argument(
+        '--cache-dir',
+        default='cache',
+        help='Directory to store cache files (default: cache)'
+    )
+    
+    parser.add_argument(
+        '--cache-expiry',
+        type=int,
+        default=7,
+        help='Cache expiry in days (default: 7)'
+    )
+    
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Disable caching and fetch fresh data'
+    )
+    
     args = parser.parse_args()
     
     # Create analyzer and run analysis
-    analyzer = WikipediaAnalyzer()
+    if args.no_cache:
+        # Use a temporary directory that gets cleaned up
+        import tempfile
+        cache_dir = tempfile.mkdtemp()
+        cache_expiry = 0  # Immediate expiry
+    else:
+        cache_dir = args.cache_dir
+        cache_expiry = args.cache_expiry
+    
+    analyzer = WikipediaAnalyzer(cache_dir=cache_dir, cache_expiry_days=cache_expiry)
     
     try:
         word_freq = analyzer.analyze_category(args.category)

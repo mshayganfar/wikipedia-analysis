@@ -10,6 +10,8 @@ This script analyzes all pages in a Wikipedia category and outputs the cumulativ
 - Calculates word frequency across all pages
 - Displays top N most frequent words
 - Optional JSON output for further analysis
+- **Local caching** to avoid reprocessing the same category
+- Configurable cache expiry (default: 7 days)
 
 ## Installation
 
@@ -35,6 +37,9 @@ python wikipedia_category_analyzer.py "Machine_learning" --top 100 --output resu
 - `category`: Wikipedia category name (without "Category:" prefix)
 - `--top N`: Number of top words to display (default: 50)
 - `--output FILE`: Save results to JSON file
+- `--cache-dir DIR`: Directory to store cache files (default: cache)
+- `--cache-expiry DAYS`: Cache expiry in days (default: 7)
+- `--no-cache`: Disable caching and fetch fresh data
 
 ## Examples
 
@@ -47,6 +52,12 @@ python wikipedia_category_analyzer.py "Machine_learning" --top 100
 
 # Save results to file
 python wikipedia_category_analyzer.py "Artificial_intelligence" --output ai_words.json
+
+# Use custom cache directory with 14-day expiry
+python wikipedia_category_analyzer.py "Machine_learning" --cache-dir my_cache --cache-expiry 14
+
+# Force fresh data (no cache)
+python wikipedia_category_analyzer.py "Large_language_models" --no-cache
 ```
 
 ## Output
