@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wikipedia Word Cloud Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .container {
+            padding-top: 2rem;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.95);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            border: none;
+        }
+        
+        #wordcloud {
+            min-height: 500px;
+            border: 2px dashed #e0e0e0;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .word-item {
+            display: inline-block;
+            margin: 5px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        
+        .word-item:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            font-size: 1.2rem;
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 25px;
+            padding: 10px 30px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .form-control {
+            border-radius: 25px;
+            border: 2px solid #e0e0e0;
+            padding: 10px 20px;
+        }
+        
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .cached-category {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .cached-category:hover {
+            background: #d4edda;
+            transform: translateY(-2px);
+        }
+        
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: inline-block;
+            margin: 2px;
+        }
+        
+        .color-palette-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header text-center">
+                        <h1><i class="fas fa-cloud"></i> Wikipedia Word Cloud Analyzer</h1>
+                        <p class="mb-0">Visualize word frequencies from Wikipedia categories</p>
+                    </div>
+                    <div class="card-body">
+                        <!-- Category Input Section -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <input type="text" id="categoryInput" class="form-control" 
+                                           placeholder="Enter Wikipedia category (e.g., Large_language_models)" 
+                                           value="Large_language_models">
+                                    <button class="btn btn-primary" type="button" onclick="analyzeCategory()">
+                                        <i class="fas fa-search"></i> Analyze
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <select id="colorPaletteSelect" class="form-control" onchange="updateWordCloudColors()">
+                                    <option value="pastel">Pastel Colors</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-secondary w-100" onclick="loadCachedCategories()">
+                                    <i class="fas fa-history"></i> Show Cached
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Color Palette Preview Section -->
+                        <div id="colorPalettePreview" class="mb-4" style="display: none;">
+                            <h6><i class="fas fa-palette"></i> Current Color Palette</h6>
+                            <div id="colorPreviewContainer" class="d-flex flex-wrap gap-2"></div>
+                        </div>
+
+                        <!-- Cached Categories Section -->
+                        <div id="cachedCategories" class="mb-4" style="display: none;">
+                            <h5><i class="fas fa-database"></i> Cached Categories</h5>
+                            <div id="cachedCategoriesList"></div>
+                        </div>
+
+                        <!-- Statistics Section -->
+                        <div id="statsSection" style="display: none;">
+                            <div class="stats-card">
+                                <div class="row text-center">
+                                    <div class="col-md-3">
+                                        <h4 id="totalWords">0</h4>
+                                        <small>Unique Words</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 id="totalOccurrences">0</h4>
+                                        <small>Total Occurrences</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 id="maxFrequency">0</h4>
+                                        <small>Max Frequency</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 id="currentCategory">-</h4>
+                                        <small>Category</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Word Cloud Section -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-cloud"></i> Word Cloud Visualization</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="wordcloud">
+                                    <div class="loading">
+                                        <i class="fas fa-info-circle"></i>
+                                        Enter a Wikipedia category above to generate a word cloud
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Error Section -->
+                        <div id="errorSection" style="display: none;">
+                            <div class="error-message">
+                                <strong><i class="fas fa-exclamation-triangle"></i> Error:</strong>
+                                <span id="errorMessage"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentData = null;
+        let availablePalettes = {};
+        let currentPalette = 'pastel';
+
+        // Load cached categories and color palettes on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCachedCategories();
+            loadColorPalettes();
+        });
+
+        // Allow Enter key to trigger analysis
+        document.getElementById('categoryInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeCategory();
+            }
+        });
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorSection').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('errorSection').style.display = 'none';
+            }, 5000);
+        }
+
+        function hideError() {
+            document.getElementById('errorSection').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('wordcloud').innerHTML = `
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    Analyzing Wikipedia category... This may take a few minutes for new categories.
+                </div>
+            `;
+        }
+
+        function loadColorPalettes() {
+            fetch('/api/color-palettes')
+                .then(response => response.json())
+                .then(palettes => {
+                    availablePalettes = palettes;
+                    const select = document.getElementById('colorPaletteSelect');
+                    
+                    // Clear existing options
+                    select.innerHTML = '';
+                    
+                    // Add palette options
+                    for (const [key, palette] of Object.entries(palettes)) {
+                        const option = document.createElement('option');
+                        option.value = key;
+                        option.textContent = palette.name;
+                        if (key === currentPalette) {
+                            option.selected = true;
+                        }
+                        select.appendChild(option);
+                    }
+                    
+                    // Show color preview for current palette
+                    updateColorPreview();
+                })
+                .catch(error => {
+                    console.error('Error loading color palettes:', error);
+                    showError('Failed to load color palettes');
+                });
+        }
+
+        function updateColorPreview() {
+            const previewContainer = document.getElementById('colorPreviewContainer');
+            const previewSection = document.getElementById('colorPalettePreview');
+            
+            if (availablePalettes[currentPalette]) {
+                const colors = availablePalettes[currentPalette].colors;
+                previewContainer.innerHTML = colors.map(color => 
+                    `<div class="color-preview" style="background-color: ${color}" title="${color}"></div>`
+                ).join('');
+                previewSection.style.display = 'block';
+            }
+        }
+
+        function updateWordCloudColors() {
+            const select = document.getElementById('colorPaletteSelect');
+            currentPalette = select.value;
+            updateColorPreview();
+            
+            // Only update the color preview, don't regenerate the word cloud
+            // User must click "Analyze" button to apply new colors to the word cloud
+        }
+
+        function loadCachedCategories() {
+            fetch('/api/categories')
+                .then(response => response.json())
+                .then(categories => {
+                    const container = document.getElementById('cachedCategoriesList');
+                    const section = document.getElementById('cachedCategories');
+                    
+                    if (categories.length === 0) {
+                        container.innerHTML = '<p class="text-muted">No cached categories found. Analyze a category first!</p>';
+                    } else {
+                        container.innerHTML = categories.map(cat => `
+                            <div class="cached-category" onclick="loadCategory('${cat.name}')">
+                                <strong>${cat.display_name}</strong><br>
+                                <small>${cat.total_words} words, ${cat.total_occurrences} occurrences</small>
+                            </div>
+                        `).join('');
+                    }
+                    
+                    section.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading cached categories:', error);
+                    showError('Failed to load cached categories');
+                });
+        }
+
+        function loadCategory(categoryName) {
+            document.getElementById('categoryInput').value = categoryName;
+            analyzeCategory();
+        }
+
+        function analyzeCategory() {
+            const category = document.getElementById('categoryInput').value.trim();
+            
+            if (!category) {
+                showError('Please enter a category name');
+                return;
+            }
+
+            hideError();
+            showLoading();
+
+            fetch(`/api/word-cloud/${encodeURIComponent(category)}/${currentPalette}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    currentData = data;
+                    displayWordCloud(data);
+                    updateStats(data);
+                })
+                .catch(error => {
+                    console.error('Error analyzing category:', error);
+                    showError(`Failed to analyze category: ${error.message}`);
+                    document.getElementById('wordcloud').innerHTML = `
+                        <div class="loading">
+                            <i class="fas fa-exclamation-triangle text-danger"></i>
+                            Failed to load word cloud
+                        </div>
+                    `;
+                });
+        }
+
+        function displayWordCloud(data) {
+            const container = document.getElementById('wordcloud');
+            
+            if (!data.words || data.words.length === 0) {
+                container.innerHTML = `
+                    <div class="loading">
+                        <i class="fas fa-info-circle"></i>
+                        No words found for this category
+                    </div>
+                `;
+                return;
+            }
+
+            // Create word cloud HTML
+            const wordElements = data.words.map(word => {
+                const fontSize = Math.max(12, Math.min(48, word.size));
+                const backgroundColor = word.color || '#667eea'; // Fallback color
+                return `
+                    <span class="word-item" 
+                          style="font-size: ${fontSize}px; background-color: ${backgroundColor};" 
+                          title="${word.text}: ${word.frequency} occurrences"
+                          onclick="highlightWord('${word.text}')">
+                        ${word.text}
+                    </span>
+                `;
+            }).join('');
+
+            container.innerHTML = `<div style="text-align: center; line-height: 1.5;">${wordElements}</div>`;
+        }
+
+        function updateStats(data) {
+            document.getElementById('totalWords').textContent = data.total_words.toLocaleString();
+            document.getElementById('totalOccurrences').textContent = 
+                data.words.reduce((sum, word) => sum + word.frequency, 0).toLocaleString();
+            document.getElementById('maxFrequency').textContent = 
+                data.words.length > 0 ? data.words[0].frequency : 0;
+            document.getElementById('currentCategory').textContent = 
+                data.category.replace(/_/g, ' ');
+            
+            document.getElementById('statsSection').style.display = 'block';
+        }
+
+        function highlightWord(word) {
+            // Find the word data
+            if (!currentData) return;
+            
+            const wordData = currentData.words.find(w => w.text === word);
+            if (wordData) {
+                alert(`Word: ${wordData.text}\nFrequency: ${wordData.frequency} occurrences`);
+            }
+        }
+    </script>
+</body>
+</html>
